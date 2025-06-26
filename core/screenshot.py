@@ -1,4 +1,4 @@
-import os
+import ctypes
 import threading
 import time
 import tkinter as tk
@@ -14,16 +14,19 @@ from core.screenshot_auto import start_auto_scroll_screenshot, stop_auto_scroll_
 
 long_screenshot_coords = None
 long_screenshot_images = []
+thumbnail_refs = []
 
 
-def start_long_screenshot(root):
+def start_long_screenshot(root, big_preview_label, thumbnail_container):
     root.withdraw()
-    threading.Thread(target=select_area_for_long_screenshot, args=(root,)).start()
+    threading.Thread(
+        target=select_area_for_long_screenshot,
+        args=(root, big_preview_label, thumbnail_container),
+    ).start()
 
 
-def select_area_for_long_screenshot(root):
+def select_area_for_long_screenshot(root, big_preview_label, thumbnail_container):
     global long_screenshot_coords
-    import ctypes
 
     ctypes.windll.user32.ShowWindow(ctypes.windll.kernel32.GetConsoleWindow(), 0)
 
@@ -62,7 +65,12 @@ def select_area_for_long_screenshot(root):
         time.sleep(0.2)
 
         screen.destroy()
-        root.after(0, lambda: show_long_screenshot_window(root))
+        root.after(
+            0,
+            lambda: show_long_screenshot_window(
+                root, big_preview_label, thumbnail_container
+            ),
+        )
 
     canvas.bind("<ButtonPress-1>", on_click)
     canvas.bind("<B1-Motion>", on_drag)
@@ -71,44 +79,64 @@ def select_area_for_long_screenshot(root):
     screen.mainloop()
 
 
-def show_long_screenshot_window(root):
+def show_long_screenshot_window(root, big_preview_label, thumbnail_container):
     overlay = show_overlay_box(long_screenshot_coords, root)
 
     def capture_current_view():
-        # Get updated geometry of the overlay
-        geo = overlay.geometry()  # Format: "widthxheight+x+y"
+        geo = overlay.geometry()
         size_part, pos_part = geo.split("+", 1)
         width, height = map(int, size_part.split("x"))
         x, y = map(int, pos_part.split("+"))
 
-        overlay.withdraw()  # Hide before screenshot
+        overlay.withdraw()
         time.sleep(0.2)
 
         screenshot = pyautogui.screenshot()
         cropped = screenshot.crop((x, y, x + width, y + height))
-        long_screenshot_images.append(
-            cv2.cvtColor(np.array(cropped), cv2.COLOR_RGB2BGR)
-        )
 
-        overlay.deiconify()  # Show again
+        # 1. Convert and store full image (OpenCV format for merging)
+        img_np = cv2.cvtColor(np.array(cropped), cv2.COLOR_RGB2BGR)
+        long_screenshot_images.append(img_np)
+
+        overlay.deiconify()
         status_label.config(text=f"✅ Captured {len(long_screenshot_images)} parts")
 
+        # 2. Create thumbnail for preview
+        thumb = cropped.copy()
+        thumb.thumbnail((240, 180))  # Adjust size if needed
+        thumb_tk = ImageTk.PhotoImage(thumb)
+        thumbnail_refs.append(thumb_tk)  # Prevent garbage collection
+
+        # 3. Create thumbnail label and add click event
+        thumb_label = tk.Label(
+            thumbnail_container, image=thumb_tk, bg="#333333", cursor="hand2"
+        )
+        thumb_label.pack(pady=4, padx=4)
+
+        def on_thumbnail_click(image=cropped):
+            # Show the selected image in the big preview area
+            preview = image.copy()
+            preview.thumbnail((600, 400))
+            preview_tk = ImageTk.PhotoImage(preview)
+            big_preview_label.configure(image=preview_tk, text="")
+            big_preview_label.image = preview_tk  # type: ignore # Keep reference
+
+        thumb_label.bind("<Button-1>", lambda e: on_thumbnail_click())
+
     def finish_and_save():
-        overlay.destroy()  # close the overlay window
+        overlay.destroy()
         stop_auto_scroll_capture()
         if not long_screenshot_images:
             messagebox.showwarning("Empty", "No captures taken.")
             return
 
-        # 1. Find max width
         max_width = max(img.shape[1] for img in long_screenshot_images)
 
-        # 2. Pad images to match max width
         padded_images = []
         for img in long_screenshot_images:
             height, width, channels = img.shape
             if width < max_width:
-                # Pad on the right
+
                 pad_width = max_width - width
                 padded = cv2.copyMakeBorder(
                     img,
@@ -117,13 +145,12 @@ def show_long_screenshot_window(root):
                     left=0,
                     right=pad_width,
                     borderType=cv2.BORDER_CONSTANT,
-                    value=(0, 0, 0),  # Black padding, change to (255,255,255) for white
+                    value=(0, 0, 0),
                 )
                 padded_images.append(padded)
             else:
                 padded_images.append(img)
 
-        # 3. Stack and save
         final = np.vstack(padded_images)
         save_path = filedialog.asksaveasfilename(
             defaultextension=".png", filetypes=[("PNG Image", "*.png")]
@@ -146,7 +173,7 @@ def show_long_screenshot_window(root):
             messagebox.showinfo("Nothing to undo", "No captured images to undo.")
 
     def handle_auto_scroll():
-        overlay.withdraw()  # Hide overlay for clean screenshots
+        overlay.withdraw()
         start_auto_scroll_screenshot(
             root, long_screenshot_coords, long_screenshot_images
         )
