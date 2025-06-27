@@ -25,7 +25,9 @@ class ImagePreviewCanvas:
         scale_factor = 0.5
         thumb_width = int(full_img.width * scale_factor)
         thumb_height = int(full_img.height * scale_factor)
-        thumb_img = full_img.resize((thumb_width, thumb_height), Image.LANCZOS)  # type: ignore
+        thumb_img = full_img.resize(
+            (thumb_width, thumb_height), Image.Resampling.LANCZOS
+        )
 
         tk_img = ImageTk.PhotoImage(thumb_img)
 
@@ -75,7 +77,9 @@ class ImagePreviewCanvas:
             messagebox.showwarning("Empty", "No images to export.")
             return
 
-        scale_factor = 0.5  # Match the scaling used in add_image
+        scale_factor = 0.5  # Matches scaling used in add_image()
+        upscale_factor = 1.0  # You can adjust this to control final image size
+
         image_boxes = []
 
         for item_id in self.image_items:
@@ -86,19 +90,32 @@ class ImagePreviewCanvas:
             thumb_x, thumb_y = map(int, coords)
             full_img = self.image_meta[item_id]
 
-            # FIX: Convert thumbnail position to full image coordinates
+            # 1. Convert position to full image coordinates
             full_x = int(thumb_x / scale_factor)
             full_y = int(thumb_y / scale_factor)
 
+            # 2. Resize full image (upscale)
+            enlarged_img = full_img.resize(
+                (
+                    int(full_img.width * upscale_factor),
+                    int(full_img.height * upscale_factor),
+                ),
+                Image.Resampling.LANCZOS,  # type: ignore
+            )
+
+            # 3. Adjust position for upscaled image
+            adj_x = int(full_x * upscale_factor)
+            adj_y = int(full_y * upscale_factor)
+
             image_boxes.append(
-                (full_img, full_x, full_y, full_img.width, full_img.height)
+                (enlarged_img, adj_x, adj_y, enlarged_img.width, enlarged_img.height)
             )
 
         if not image_boxes:
             messagebox.showerror("Error", "No images found on canvas.")
             return
 
-        # Bounding box
+        # Compute bounding box
         min_x = min(x for _, x, y, w, h in image_boxes)
         min_y = min(y for _, x, y, w, h in image_boxes)
         max_x = max(x + w for _, x, y, w, h in image_boxes)
@@ -107,6 +124,7 @@ class ImagePreviewCanvas:
         export_width = max_x - min_x
         export_height = max_y - min_y
 
+        # Create final canvas
         final_image = Image.new("RGB", (export_width, export_height), color=(0, 0, 0))
 
         for img, x, y, w, h in image_boxes:

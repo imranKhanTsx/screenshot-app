@@ -99,9 +99,9 @@ class ScreenshotManager:
             thumb_label.pack(pady=4, padx=4)
 
             def on_click_thumb(image=cropped):
-                preview = image.copy()
-                preview.thumbnail((600, 400))
-                self.preview_canvas.add_image(preview)  # Pass the PIL Image directly
+                # preview = image.copy()
+                # preview.thumbnail((600, 400))
+                self.preview_canvas.add_image(image)  # Pass the PIL Image directly
 
             thumb_label.bind("<Button-1>", lambda e: on_click_thumb())
 
