@@ -9,7 +9,7 @@ import numpy as np
 import pyautogui
 from PIL import Image, ImageTk
 
-from core.overlay import show_overlay_box
+from core.overlay import OverlayBox
 from core.screenshot_auto import start_auto_scroll_screenshot, stop_auto_scroll_capture
 
 
@@ -69,7 +69,7 @@ class ScreenshotManager:
         screen.mainloop()
 
     def _show_capture_ui(self):
-        overlay = show_overlay_box(self.coords, self.root)
+        overlay = OverlayBox(self.coords, self.root)
 
         def capture():
             geo = overlay.geometry()
@@ -99,11 +99,10 @@ class ScreenshotManager:
             thumb_label.pack(pady=4, padx=4)
 
             def on_click_thumb(image=cropped):
-                # preview = image.copy()
-                # preview.thumbnail((600, 400))
                 self.preview_canvas.add_image(image)  # Pass the PIL Image directly
 
             thumb_label.bind("<Button-1>", lambda e: on_click_thumb())
+            overlay.focus_overlay()
 
         def finish():
             overlay.destroy()
@@ -166,12 +165,21 @@ class ScreenshotManager:
         window.geometry("300x180")
         window.resizable(False, False)
         window.protocol("WM_DELETE_WINDOW", on_close)
+        window.protocol("")
 
         tk.Label(window, text="Scroll and press capture repeatedly").pack(pady=10)
         tk.Button(window, text="📸 Capture Current View", command=capture).pack(pady=5)
         tk.Button(window, text="⚙️ Start Auto Scroll", command=auto_scroll).pack(pady=5)
         tk.Button(window, text="✅ Finish & Save", command=finish).pack(pady=5)
         tk.Button(window, text="⏪ Undo Last", command=undo).pack(pady=5)
+
+        # ⌨️ Shortcut bindings
+        overlay.focus_overlay()
+        overlay.get_widget().bind("<Control-c>", lambda e: capture())
+        overlay.get_widget().bind("<Control-s>", lambda e: finish())
+        overlay.get_widget().bind("<Control-z>", lambda e: undo())
+        overlay.get_widget().bind("<Control-a>", lambda e: auto_scroll())
+        overlay.get_widget().bind("<Control-m>", lambda e: window.iconify())
 
         global status_label
         status_label = tk.Label(window, text="No captures yet.")
